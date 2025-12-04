@@ -1,159 +1,230 @@
-import java.io.IOException;
-import java.nio.file.*;
 import java.util.*;
-import java.util.stream.Collectors;
-
-record Task(int id, String description) {}
 
 public class TaskManager {
-    private static final Path TASK_FILE = Paths.get("tasks.txt");
+    private final TaskList taskList = new TaskList();
+    private final UndoStack undoStack = new UndoStack();
+    private final NotificationQueue notificationQueue = new NotificationQueue();
+    private final TaskLookupTable taskLookupTable = new TaskLookupTable();
+
+    private int nextId = 1;
+    private final Scanner scanner = new Scanner(System.in);
+
+    // Array requirement (list of valid commands)
+    private final String[] validCommands = {"add", "list", "complete", "delete", "undo", "notify", "lookup", "exit"};
 
     public static void main(String[] args) {
-        if (args.length == 0) {
-            printUsage();
-            return;
-        }
+        new TaskManager().start();
+    }
 
-        String cmd = args[0].toLowerCase();
-        try {
-            switch (cmd) {
+    public void start() {
+        while (true) {
+            System.out.print("\nEnter command (add, list, complete, delete, undo, notify, lookup, exit): ");
+            String command = scanner.nextLine().trim().toLowerCase();
+
+            if (!isValidCommand(command)) {
+                System.out.println("Invalid command. Please try again.");
+                continue;
+            }
+
+            switch (command) {
                 case "add":
-                    addTask(joinArgs(args, 1));
+                    addTask();
                     break;
                 case "list":
                     listTasks();
                     break;
-                case "remove":
-                    removeTaskArg(args);
+                case "complete":
+                    completeTask();
                     break;
-                case "clear":
-                    clearTasks();
+                case "delete":
+                    deleteTask();
                     break;
-                default:
-                    System.err.println("Unknown command: " + cmd);
-                    printUsage();
+                case "undo":
+                    undoLastAction();
+                    break;
+                case "notify":
+                    showNextNotification();
+                    break;
+                case "lookup":
+                    lookupTask();
+                    break;
+                case "exit":
+                    System.out.println("Exiting Task Manager. Goodbye!");
+                    return;
             }
-        } catch (IOException e) {
-            System.err.println("I/O error: " + e.getMessage());
+        }
+    }
+
+    private boolean isValidCommand(String command) {
+        for (String c : validCommands) {
+            if (c.equals(command)) return true;
+        }
+        return false;
+    }
+
+    private void addTask() {
+        System.out.print("Enter description: ");
+        String text = scanner.nextLine().trim();
+        if (text.isEmpty()) {
+            System.out.println("Empty description, task not added.");
+            return;
+        }
+
+        Task t = new Task(nextId++, text);
+
+        taskList.add(t);
+        taskLookupTable.add(t);
+
+        undoStack.push("Added: " + t.getDescription());
+        notificationQueue.addNotification("Task added: " + t.getDescription());
+        System.out.println("Task added.");
+    }
+
+    private void completeTask() {
+        listTasks();
+        System.out.print("Enter number to complete: ");
+        int index = readIndexFromUser();
+        if (index < 0) return;
+
+        Task t = taskList.get(index);
+        if (t == null) {
+            System.out.println("No task at that number.");
+            return;
+        }
+        t.markCompleted();
+
+        undoStack.push("Completed: " + t.getDescription());
+        notificationQueue.addNotification("Task completed: " + t.getDescription());
+        System.out.println("Task marked as completed.");
+    }
+
+    private void deleteTask() {
+        listTasks();
+        System.out.print("Enter number to delete: ");
+        int index = readIndexFromUser();
+        if (index < 0) return;
+
+        Task removed = taskList.remove(index);
+        if (removed == null) {
+            System.out.println("No task at that number.");
+            return;
+        }
+        taskLookupTable.remove(removed.getId());
+
+        undoStack.push("Deleted: " + removed.getDescription());
+        notificationQueue.addNotification("Task deleted: " + removed.getDescription());
+        System.out.println("Task deleted.");
+    }
+
+    private void undoLastAction() {
+        String lastAction = undoStack.pop();
+        if (lastAction != null) {
+            notificationQueue.addNotification("Undid action: " + lastAction);
+            System.out.println("Last action undone: " + lastAction);
+        } else {
+            System.out.println("No actions to undo.");
+        }
+    }
+
+    private void showNextNotification() {
+        String note = notificationQueue.getNextNotification();
+        System.out.println(note == null ? "No notifications." : note);
+    }
+
+    private void lookupTask() {
+        System.out.print("Enter task id to lookup: ");
+        String line = scanner.nextLine().trim();
+        try {
+            int id = Integer.parseInt(line);
+            Task t = taskLookupTable.lookup(id);
+            if (t == null) System.out.println("Task not found.");
+            else System.out.println(t);
         } catch (NumberFormatException e) {
-            System.err.println("Invalid number format: " + e.getMessage());
+            System.out.println("Invalid id.");
         }
     }
 
-    private static void printUsage() {
-        System.out.println("TaskManager usage:");
-        System.out.println("  java TaskManager add <task description>   - add a task");
-        System.out.println("  java TaskManager list                     - list tasks");
-        System.out.println("  java TaskManager remove <index>           - remove task by 1-based index");
-        System.out.println("  java TaskManager clear                    - remove all tasks");
+    private void listTasks() {
+        taskList.printAll();
     }
 
-    private static String joinArgs(String[] args, int start) {
-        if (args.length <= start) return "";
-        return String.join(" ", java.util.Arrays.copyOfRange(args, start, args.length)).trim();
+    private int readIndexFromUser() {
+        try {
+            int idx = Integer.parseInt(scanner.nextLine().trim()) - 1;
+            if (idx < 0) {
+                System.out.println("Invalid number.");
+                return -1;
+            }
+            return idx;
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid number.");
+            return -1;
+        }
     }
 
-    // Load tasks from file into multiple in-memory data structures:
-    // - LinkedList<Task> as the primary ordered container
-    // - HashMap<Integer, Task> for id -> task lookup (hash table)
-    // - Stack<Task> and Queue<Task> to demonstrate LIFO/FIFO containers
-    // - Task[] to demonstrate array usage
-    private static LinkedList<Task> loadTasks() throws IOException {
-        LinkedList<Task> list = new LinkedList<>();
-        if (!Files.exists(TASK_FILE)) return list;
-        List<String> lines = Files.readAllLines(TASK_FILE);
-        for (String line : lines) {
-            if (line.isBlank()) continue;
-            int sep = line.indexOf(':');
-            if (sep <= 0) continue;
-            try {
-                int id = Integer.parseInt(line.substring(0, sep));
-                String desc = line.substring(sep + 1);
-                list.add(new Task(id, desc));
-            } catch (NumberFormatException ignored) {
+    // --- Helper classes ---
+    private static class Task {
+        private final int id;
+        private final String description;
+        private boolean completed = false;
+
+        Task(int id, String description) {
+            this.id = id;
+            this.description = description;
+        }
+
+        int getId() { return id; }
+        String getDescription() { return description; }
+        void markCompleted() { completed = true; }
+        boolean isCompleted() { return completed; }
+
+        @Override
+        public String toString() {
+            return id + ". [" + (completed ? "x" : " ") + "] " + description;
+        }
+    }
+
+    private static class TaskList {
+        private final LinkedList<Task> list = new LinkedList<>();
+
+        void add(Task t) { list.add(t); }
+        Task get(int index) {
+            if (index < 0 || index >= list.size()) return null;
+            return list.get(index);
+        }
+        Task remove(int index) {
+            if (index < 0 || index >= list.size()) return null;
+            return list.remove(index);
+        }
+        void printAll() {
+            if (list.isEmpty()) {
+                System.out.println("No tasks.");
+                return;
+            }
+            for (int i = 0; i < list.size(); i++) {
+                Task t = list.get(i);
+                System.out.printf("%d. [%s] %s%n", i+1, t.isCompleted() ? "x" : " ", t.getDescription());
             }
         }
-        return list;
     }
 
-    private static void writeTasks(Collection<Task> tasks) throws IOException {
-        Files.createDirectories(TASK_FILE.getParent() == null ? Paths.get(".") : TASK_FILE.getParent());
-        List<String> out = new ArrayList<>();
-        for (Task t : tasks) {
-            out.add(t.id() + ":" + t.description());
-        }
-        Files.write(TASK_FILE, out, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+    private static class UndoStack {
+        private final Stack<String> stack = new Stack<>();
+        void push(String s) { stack.push(s); }
+        String pop() { return stack.isEmpty() ? null : stack.pop(); }
     }
 
-    private static void addTask(String task) throws IOException {
-        if (task.isEmpty()) {
-            System.err.println("No task provided to add.");
-            return;
-        }
-        LinkedList<Task> tasks = loadTasks();
-        // Determine next id
-        int nextId = tasks.stream().mapToInt(Task::id).max().orElse(0) + 1;
-        Task t = new Task(nextId, task);
-        // Demonstrate use of different structures
-        tasks.add(t); // LinkedList
-        // Array
-        Task[] arr = tasks.toArray(new Task[0]);
-        // Build hash table (id -> task) from the array
-        HashMap<Integer, Task> map = new HashMap<>();
-        for (Task x : arr) map.put(x.id(), x);
-        // Stack (LIFO) - push all tasks to demonstrate
-        Stack<Task> stack = new Stack<>();
-        for (Task x : arr) stack.push(x);
-        // Queue (FIFO) - create from array and call peek to demonstrate usage
-        new ArrayDeque<>(Arrays.asList(arr)).peek();
-
-        // Persist
-        writeTasks(tasks);
-        System.out.println("Added: " + t.description() + " (total: " + tasks.size() + ")");
+    private static class NotificationQueue {
+        private final ArrayDeque<String> q = new ArrayDeque<>();
+        void addNotification(String s) { q.offer(s); }
+        String getNextNotification() { return q.poll(); }
     }
 
-    private static void listTasks() throws IOException {
-        LinkedList<Task> tasks = loadTasks();
-        if (tasks.isEmpty()) {
-            System.out.println("No tasks found.");
-            return;
-        }
-        // Demonstrate conversion to array and iteration
-        Task[] arr = tasks.toArray(new Task[0]);
-        for (int i = 0; i < arr.length; i++) {
-            System.out.printf("%d. %s%n", i + 1, arr[i].description());
-        }
+    private static class TaskLookupTable {
+        private final HashMap<Integer, Task> map = new HashMap<>();
+        void add(Task t) { map.put(t.getId(), t); }
+        void remove(int id) { map.remove(id); }
+        Task lookup(int id) { return map.get(id); }
     }
 
-    private static void removeTaskArg(String[] args) throws IOException {
-        if (args.length < 2) {
-            System.err.println("Please provide the index to remove.");
-            return;
-        }
-        int idx = Integer.parseInt(args[1]);
-        removeTask(idx);
-    }
-
-    private static void removeTask(int oneBasedIndex) throws IOException {
-        LinkedList<Task> tasks = loadTasks();
-        if (tasks.isEmpty()) {
-            System.err.println("No tasks to remove.");
-            return;
-        }
-        int idx = oneBasedIndex - 1;
-        if (idx < 0 || idx >= tasks.size()) {
-            System.err.println("Index out of range.");
-            return;
-        }
-        Task removed = tasks.remove(idx);
-        writeTasks(tasks);
-        System.out.println("Removed: " + removed.description());
-    }
-
-    private static void clearTasks() throws IOException {
-        if (Files.exists(TASK_FILE)) {
-            Files.delete(TASK_FILE);
-        }
-        System.out.println("All tasks cleared.");
-    }
 }
