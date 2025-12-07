@@ -10,7 +10,7 @@ public class TaskManager {
     private final Scanner scanner = new Scanner(System.in);
 
     // Array requirement (list of valid commands)
-    private final String[] validCommands = {"add", "list", "complete", "delete", "undo", "notify", "lookup", "exit"};
+    private final String[] validCommands = {"add", "list", "complete", "delete", "undo", "notify", "lookup", "edit", "exit"};
 
     public static void main(String[] args) {
         new TaskManager().start();
@@ -18,7 +18,7 @@ public class TaskManager {
 
     public void start() {
         while (true) {
-            System.out.print("\nEnter command (add, list, complete, delete, undo, notify, lookup, exit): ");
+            System.out.print("\nEnter command (add, list, complete, delete, undo, notify, lookup, edit, exit): ");
             String command = scanner.nextLine().trim().toLowerCase();
 
             if (!isValidCommand(command)) {
@@ -48,6 +48,9 @@ public class TaskManager {
                 case "lookup":
                     lookupTask();
                     break;
+                case "edit":
+                    editTask();
+                    break;    
                 case "exit":
                     System.out.println("Exiting Task Manager. Goodbye!");
                     return;
@@ -165,7 +168,7 @@ public class TaskManager {
     // --- Helper classes ---
     private static class Task {
         private final int id;
-        private final String description;
+        private String description;
         private boolean completed = false;
 
         Task(int id, String description) {
@@ -175,6 +178,7 @@ public class TaskManager {
 
         int getId() { return id; }
         String getDescription() { return description; }
+        void setDescription(String description) { this.description = description; }
         void markCompleted() { completed = true; }
         boolean isCompleted() { return completed; }
 
@@ -227,4 +231,31 @@ public class TaskManager {
         Task lookup(int id) { return map.get(id); }
     }
 
+    // I've written the editTask method below
+    private void editTask() {
+        listTasks(); // show current tasks
+        System.out.print("Enter number to edit: "); // asks user for task number
+        int index = readIndexFromUser(); // checks is task number is valid
+        if (index < 0) return; // stops method if invalid
+
+        Task t = taskList.get(index); // gets the task at that index
+        if (t == null) { // checks if task exists
+            System.out.println("No task at that number.");
+            return;
+        }
+
+        System.out.print("Enter new description: "); // asks for new description
+        String newDescription = scanner.nextLine().trim(); // reads new description and trims whitespace
+        if (newDescription.isEmpty()) { // checks if new description is empty
+            System.out.println("Empty description, task not edited.");
+            return;
+        }
+
+        String oldDescription = t.getDescription(); // stores old description for undo (undo doesn't work currently)
+        t.setDescription(newDescription); // sets new description
+
+        undoStack.push("Edited (id " + t.getId() + "): " + oldDescription + " -> " + newDescription); // push edit action to undo stack
+        notificationQueue.addNotification("Task edited: " + newDescription); // adds notification
+        System.out.println("Task description updated."); // confirms update
+    }
 }
