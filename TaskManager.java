@@ -3,14 +3,12 @@ import java.util.*;
 public class TaskManager {
     private final TaskList taskList = new TaskList();
     private final UndoStack undoStack = new UndoStack();
-    private final NotificationQueue notificationQueue = new NotificationQueue();
-    private final TaskLookupTable taskLookupTable = new TaskLookupTable();
 
     private int nextId = 1;
     private final Scanner scanner = new Scanner(System.in);
 
     // Array requirement (list of valid commands)
-    private final String[] validCommands = {"add", "list", "complete", "delete", "undo", "notify", "lookup", "edit", "exit"};
+    private final String[] validCommands = {"add", "list", "complete", "incomplete", "delete", "edit", "exit"};
 
     public static void main(String[] args) {
         new TaskManager().start();
@@ -18,7 +16,7 @@ public class TaskManager {
 
     public void start() {
         while (true) {
-            System.out.print("\nEnter command (add, list, complete, delete, undo, notify, lookup, edit, exit): ");
+            System.out.print("\nEnter command (add, list, complete, incomplete, delete, edit, exit): ");
             String command = scanner.nextLine().trim().toLowerCase();
 
             if (!isValidCommand(command)) {
@@ -36,17 +34,11 @@ public class TaskManager {
                 case "complete":
                     completeTask();
                     break;
+                case "incomplete":
+                    undoTaskCompletion();
+                    break;
                 case "delete":
                     deleteTask();
-                    break;
-                case "undo":
-                    undoLastAction();
-                    break;
-                case "notify":
-                    showNextNotification();
-                    break;
-                case "lookup":
-                    lookupTask();
                     break;
                 case "edit":
                     editTask();
@@ -76,10 +68,7 @@ public class TaskManager {
         Task t = new Task(nextId++, text);
 
         taskList.add(t);
-        taskLookupTable.add(t);
 
-        undoStack.push("Added: " + t.getDescription());
-        notificationQueue.addNotification("Task added: " + t.getDescription());
         System.out.println("Task added.");
     }
 
@@ -96,8 +85,6 @@ public class TaskManager {
         }
         t.markCompleted();
 
-        undoStack.push("Completed: " + t.getDescription());
-        notificationQueue.addNotification("Task completed: " + t.getDescription());
         System.out.println("Task marked as completed.");
     }
 
@@ -112,39 +99,8 @@ public class TaskManager {
             System.out.println("No task at that number.");
             return;
         }
-        taskLookupTable.remove(removed.getId());
 
-        undoStack.push("Deleted: " + removed.getDescription());
-        notificationQueue.addNotification("Task deleted: " + removed.getDescription());
         System.out.println("Task deleted.");
-    }
-
-    private void undoLastAction() {
-        String lastAction = undoStack.pop();
-        if (lastAction != null) {
-            notificationQueue.addNotification("Undid action: " + lastAction);
-            System.out.println("Last action undone: " + lastAction);
-        } else {
-            System.out.println("No actions to undo.");
-        }
-    }
-
-    private void showNextNotification() {
-        String note = notificationQueue.getNextNotification();
-        System.out.println(note == null ? "No notifications." : note);
-    }
-
-    private void lookupTask() {
-        System.out.print("Enter task id to lookup: ");
-        String line = scanner.nextLine().trim();
-        try {
-            int id = Integer.parseInt(line);
-            Task t = taskLookupTable.lookup(id);
-            if (t == null) System.out.println("Task not found.");
-            else System.out.println(t);
-        } catch (NumberFormatException e) {
-            System.out.println("Invalid id.");
-        }
     }
 
     private void listTasks() {
@@ -218,19 +174,6 @@ public class TaskManager {
         String pop() { return stack.isEmpty() ? null : stack.pop(); }
     }
 
-    private static class NotificationQueue {
-        private final ArrayDeque<String> q = new ArrayDeque<>();
-        void addNotification(String s) { q.offer(s); }
-        String getNextNotification() { return q.poll(); }
-    }
-
-    private static class TaskLookupTable {
-        private final HashMap<Integer, Task> map = new HashMap<>();
-        void add(Task t) { map.put(t.getId(), t); }
-        void remove(int id) { map.remove(id); }
-        Task lookup(int id) { return map.get(id); }
-    }
-
     // I've written the editTask method below
     private void editTask() {
         listTasks(); // show current tasks
@@ -251,11 +194,31 @@ public class TaskManager {
             return;
         }
 
-        String oldDescription = t.getDescription(); // stores old description for undo (undo doesn't work currently)
         t.setDescription(newDescription); // sets new description
 
-        undoStack.push("Edited (id " + t.getId() + "): " + oldDescription + " -> " + newDescription); // push edit action to undo stack
-        notificationQueue.addNotification("Task edited: " + newDescription); // adds notification
         System.out.println("Task description updated."); // confirms update
+    }
+
+    // Undo completion of a task
+    private void undoTaskCompletion() {
+        listTasks(); // show all tasks
+        System.out.print("Enter number to undo completion: "); // asks user for task number
+        int index = readIndexFromUser(); // checks if task number is valid
+        if (index < 0) return; // stops method if invalid
+
+        Task t = taskList.get(index); // gets the task at that index
+        if (t == null) { // checks if task exists
+            System.out.println("No task at that number.");
+            return;
+        }
+
+        if (!t.isCompleted()) { // checks if task is already incomplete
+            System.out.println("Task is not completed.");
+            return;
+        }
+            
+        // Undo completion
+        t.completed = false; // mark task as incomplete
+        System.out.println("Task marked as incomplete."); // confirms update
     }
 }
