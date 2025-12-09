@@ -145,7 +145,7 @@ public class TaskManager {
 
         @Override
         public String toString() {
-            return id + ". [" + (completed ? "x" : " ") + "] " + description;
+            return id + ". [" + (completed ? "✓" : " ") + "] " + description;
         }
     }
 
@@ -173,7 +173,7 @@ public class TaskManager {
         }
     }
 
-    // I've written the editTask method below
+    // I've written the editTask and the undoTaskCompletion methods below
     private void editTask() {
         listTasks(); // show current tasks
         System.out.print("Enter number to edit: "); // asks user for task number
