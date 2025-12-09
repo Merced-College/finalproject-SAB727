@@ -2,12 +2,11 @@ import java.util.*;
 
 public class TaskManager {
     private final TaskList taskList = new TaskList();
-    private final UndoStack undoStack = new UndoStack();
 
     private int nextId = 1;
     private final Scanner scanner = new Scanner(System.in);
 
-    // Array requirement (list of valid commands)
+    // list of valid commands
     private final String[] validCommands = {"add", "list", "complete", "incomplete", "delete", "edit", "exit"};
 
     public static void main(String[] args) {
@@ -83,6 +82,12 @@ public class TaskManager {
             System.out.println("No task at that number.");
             return;
         }
+        
+        if (t.isCompleted()) {
+            System.out.println("Task is already completed.");
+            return;
+        }
+
         t.markCompleted();
 
         System.out.println("Task marked as completed.");
@@ -163,15 +168,9 @@ public class TaskManager {
             }
             for (int i = 0; i < list.size(); i++) {
                 Task t = list.get(i);
-                System.out.printf("%d. [%s] %s%n", i+1, t.isCompleted() ? "x" : " ", t.getDescription());
+                System.out.printf("%d. [%s] %s%n", i+1, t.isCompleted() ? "✓" : " ", t.getDescription());
             }
         }
-    }
-
-    private static class UndoStack {
-        private final Stack<String> stack = new Stack<>();
-        void push(String s) { stack.push(s); }
-        String pop() { return stack.isEmpty() ? null : stack.pop(); }
     }
 
     // I've written the editTask method below
@@ -204,7 +203,7 @@ public class TaskManager {
         listTasks(); // show all tasks
         System.out.print("Enter number to undo completion: "); // asks user for task number
         int index = readIndexFromUser(); // checks if task number is valid
-        if (index < 0) return; // stops method if invalid
+        if (index <= 0) return; // stops method if invalid
 
         Task t = taskList.get(index); // gets the task at that index
         if (t == null) { // checks if task exists
