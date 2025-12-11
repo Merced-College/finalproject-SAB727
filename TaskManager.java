@@ -203,7 +203,7 @@ public class TaskManager {
         listTasks(); // show all tasks
         System.out.print("Enter number to undo completion: "); // asks user for task number
         int index = readIndexFromUser(); // checks if task number is valid
-        if (index <= 0) return; // stops method if invalid
+        if (index < 0) return; // stops method if invalid
 
         Task t = taskList.get(index); // gets the task at that index
         if (t == null) { // checks if task exists
